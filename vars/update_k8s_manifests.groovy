@@ -1,219 +1,62 @@
-@Library('Shared') _
+#!/usr/bin/env groovy
 
-pipeline {
+def call(Map config = [:]) {
 
-    agent any
+    def imageTag = config.imageTag ?: error("Image tag is required")
+    def manifestsPath = config.manifestsPath ?: 'kubernetes'
+    def gitCredentials = config.gitCredentials ?: 'github-credentials'
+    def gitUserName = config.gitUserName ?: 'Jenkins CI'
+    def gitUserEmail = config.gitUserEmail ?: 'jenkins@example.com'
 
-    environment {
+    echo "Updating Kubernetes manifests with image tag: ${imageTag}"
 
-        DOCKER_IMAGE_NAME = 'bdhanore26/easyshop-app'
-        DOCKER_MIGRATION_IMAGE_NAME = 'bdhanore26/easyshop-migration'
-        DOCKER_IMAGE_TAG = "${BUILD_NUMBER}"
+    withCredentials([
+        usernamePassword(
+            credentialsId: gitCredentials,
+            usernameVariable: 'GIT_USERNAME',
+            passwordVariable: 'GIT_PASSWORD'
+        )
+    ]) {
 
-        GITHUB_CREDENTIALS = credentials('github-credentials')
+        sh """
+        set -e
 
-        GIT_BRANCH = "master"
-    }
+        git config user.name "${gitUserName}"
+        git config user.email "${gitUserEmail}"
 
-    stages {
+        echo "Updating Easyshop application image..."
 
-        stage('Prevent Build Loop') {
+        sed -i "s|image: .*easyshop-app:.*|image: bdhanore26/easyshop-app:${imageTag}|g" \
+        ${manifestsPath}/08-easyshop-deployment.yaml
 
-            steps {
+        if [ -f "${manifestsPath}/12-migration-job.yaml" ]; then
 
-                script {
+            echo "Updating migration image..."
 
-                    def commitMsg = sh(
-                        script: "git log -1 --pretty=%B",
-                        returnStdout: true
-                    ).trim()
+            sed -i "s|image: .*easyshop-migration:.*|image: bdhanore26/easyshop-migration:${imageTag}|g" \
+            ${manifestsPath}/12-migration-job.yaml
+        fi
 
-                    echo "Latest commit message: ${commitMsg}"
+        echo "Checking for Kubernetes manifest changes..."
 
-                    if (
-                        commitMsg.contains("[skip ci]") ||
-                        commitMsg.contains("Update image tags")
-                    ) {
+        if git diff --quiet; then
+            echo "No changes detected"
+            exit 0
+        fi
 
-                        echo "Skipping Jenkins auto-generated commit build"
+        echo "Changes detected. Committing updates..."
 
-                        currentBuild.description =
-                            "Skipped Jenkins-generated commit"
+        git add ${manifestsPath}/*.yaml
 
-                        currentBuild.result = 'NOT_BUILT'
+        git commit -m "Update image tags to ${imageTag} [skip ci]"
 
-                        error("Stopping pipeline to prevent CI loop")
-                    }
-                }
-            }
-        }
+        echo "Pushing updated manifests to GitHub..."
 
-        stage('Cleanup Workspace') {
+        git push \
+        https://${GIT_USERNAME}:${GIT_PASSWORD}@github.com/bdhanore26/e-commerce-app.git \
+        HEAD:master
 
-            steps {
-
-                script {
-
-                    clean_ws()
-
-                }
-            }
-        }
-
-        stage('Clone Repository') {
-
-            steps {
-
-                script {
-
-                    clone(
-                        "https://github.com/bdhanore26/e-commerce-app.git",
-                        "master"
-                    )
-
-                }
-            }
-        }
-
-        stage('Build Docker Images') {
-
-            parallel {
-
-                stage('Build Main App Image') {
-
-                    steps {
-
-                        script {
-
-                            docker_build(
-                                imageName: env.DOCKER_IMAGE_NAME,
-                                imageTag: env.DOCKER_IMAGE_TAG,
-                                dockerfile: 'Dockerfile',
-                                context: '.'
-                            )
-
-                        }
-                    }
-                }
-
-                stage('Build Migration Image') {
-
-                    steps {
-
-                        script {
-
-                            docker_build(
-                                imageName: env.DOCKER_MIGRATION_IMAGE_NAME,
-                                imageTag: env.DOCKER_IMAGE_TAG,
-                                dockerfile: 'scripts/Dockerfile.migration',
-                                context: '.'
-                            )
-
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('Run Unit Tests') {
-
-            steps {
-
-                script {
-
-                    run_tests()
-
-                }
-            }
-        }
-
-        stage('Security Scan with Trivy') {
-
-            steps {
-
-                script {
-
-                    trivy_scan()
-
-                }
-            }
-        }
-
-        stage('Push Docker Images') {
-
-            parallel {
-
-                stage('Push Main App Image') {
-
-                    steps {
-
-                        script {
-
-                            docker_push(
-                                imageName: env.DOCKER_IMAGE_NAME,
-                                imageTag: env.DOCKER_IMAGE_TAG,
-                                credentials: 'dockerhub-credentials'
-                            )
-
-                        }
-                    }
-                }
-
-                stage('Push Migration Image') {
-
-                    steps {
-
-                        script {
-
-                            docker_push(
-                                imageName: env.DOCKER_MIGRATION_IMAGE_NAME,
-                                imageTag: env.DOCKER_IMAGE_TAG,
-                                credentials: 'dockerhub-credentials'
-                            )
-
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('Update Kubernetes Manifests') {
-
-            steps {
-
-                script {
-
-                    update_k8s_manifests(
-                        imageTag: env.DOCKER_IMAGE_TAG,
-                        manifestsPath: 'kubernetes',
-                        gitCredentials: 'github-credentials',
-                        gitUserName: 'Jenkins CI',
-                        gitUserEmail: 'bdhanore26@gmail.com'
-                    )
-
-                }
-            }
-        }
-    }
-
-    post {
-
-        success {
-
-            echo "Pipeline completed successfully"
-
-        }
-
-        failure {
-
-            echo "Pipeline failed"
-
-        }
-
-        always {
-
-            cleanWs()
-
-        }
+        echo "Kubernetes manifests updated successfully"
+        """
     }
 }
