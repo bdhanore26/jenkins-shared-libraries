@@ -42,7 +42,7 @@ def call(Map config = [:]) {
 
         git add ${manifestsPath}/*.yaml
 
-        git commit -m "Update image tags to ${imageTag} [ci skip]"
+        git commit -m "Update image tags to ${imageTag} [skip ci]"
 
         git push \
         https://${GIT_USERNAME}:${GIT_PASSWORD}@github.com/bdhanore26/e-commerce-app.git \
