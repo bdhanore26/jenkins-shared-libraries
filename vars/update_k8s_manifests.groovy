@@ -48,7 +48,7 @@ def call(Map config = [:]) {
 
         git add ${manifestsPath}/*.yaml
 
-        git commit -m "Update image tags to ${imageTag} [skip ci]"
+        git commit -m "[skip ci] Update image tags to ${imageTag}"
 
         echo "Pushing updated manifests to GitHub..."
 
