@@ -19,10 +19,10 @@ def call(Map config = [:]) {
             git config user.name "${gitUserName}"
             git config user.email "${gitUserEmail}"
 
-            sed -i "s|image: trainwithshubham/easyshop-app:.*|image: trainwithshubham/easyshop-app:${imageTag}|g" ${manifestsPath}/08-easyshop-deployment.yaml
+            sed -i "s|image: trainwithshubham/easyshop-app:.*|image: bdhanore26/easyshop-app:${imageTag}|g" ${manifestsPath}/08-easyshop-deployment.yaml
 
             if [ -f "${manifestsPath}/12-migration-job.yaml" ]; then
-                sed -i "s|image: trainwithshubham/easyshop-migration:.*|image: trainwithshubham/easyshop-migration:${imageTag}|g" ${manifestsPath}/12-migration-job.yaml
+                sed -i "s|image: trainwithshubham/easyshop-migration:.*|image: bdhanore26/easyshop-migration:${imageTag}|g" ${manifestsPath}/12-migration-job.yaml
             fi
 
             if [ -f "${manifestsPath}/10-ingress.yaml" ]; then
